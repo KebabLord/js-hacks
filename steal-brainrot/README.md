@@ -19,15 +19,15 @@ That's all, read the below info to learn how to use it.
 > Capslock needs to be on for the keys to work.
 
 ### Effect Keys:
-**V**: Opens player item stealer window. So that you can steal anyone's item in the same server.
-**Z**: Spam pumpkin weapon
-**X**: Spam freeze weapon
-**C**: Spam speed-up effect
-**B**: Spam swarm weapon
+**V**: Opens player item stealer window. So that you can steal anyone's item in the same server.  
+**Z**: Spam pumpkin weapon  
+**X**: Spam freeze weapon  
+**C**: Spam speed-up effect  
+**B**: Spam swarm weapon  
 
 ### Toggle Keys:
-**9**: Sends all player to space when you hit them
-**8**: Increases hitting range to 9999 so you can hit from afar
-**7**: When you hit a player, they can't get up for 10 second
-**6**: Ultra fast when running
+**9**: Sends all player to space when you hit them  
+**8**: Increases hitting range to 9999 so you can hit from afar  
+**7**: When you hit a player, they can't get up for 10 second  
+**6**: Ultra fast when running  
 

@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Fun Killer for Steal Brainrot Online
-// @version      5.5
-// @namespace    https://github.com/Kebablord/js-hacks/tree/master/steal-brainrot
+// @version      5.6
+// @namespace    Steal Brainrot Online
 // @description  Intercept WebSocket send/recv, apply toggles, track players, and select hex items
 // @match        https://crazygames.cdn.msnfun.com/*
 // @match        https://app-447574.games.*.yandex.net/447574*
 // @run-at       document-start
 // @grant        none
+// @updateURL    https://github.com/KebabLord/js-hacks/raw/refs/heads/main/steal-brainrot/brainrot.user.js
 // ==/UserScript==
 
 (function() {

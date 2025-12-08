@@ -1,4 +1,8 @@
+
+# Steal Brainrot Online Hack & Cheat Script
 This project is a user script for hacking the roblox's "steal brainrot" rip-off flash game "steal brainrot online". Before it was removed from crazygames for being a "rip off", a lot of grown adults were playing this game. Now it's only available at [msn](https://www.msn.com/en-us/play/games/Steal-Brainrot-Online/cg-9pltx207s22g), [yandex](https://yandex.com/games/app/447574) and [playhop](https://playhop.com/app/447574).
+
+The server almost fully trusts the client so you can send custom websocket messages to manipulate anything. This is a fun quick project i made in few hours for le epic trolling. I no longer play it tho
 
 # How to install
 First install Violentmonkey browser extension
@@ -6,26 +10,22 @@ First install Violentmonkey browser extension
 - If you are using firefox [click here](https://addons.mozilla.org/en-US/firefox/addon/violentmonkey/).
 - If you are using microsoft edge [click here](https://microsoftedge.microsoft.com/addons/detail/violentmonkey/eeagobfjdenkkddmbclomhiblgggliao).
 
-After you install the extension, install my script by clicking [HERE](https://raw.githubusercontent.com/KebabLord/js-hacks/refs/heads/master/steal-brainrot/brainrot.user.js).
+After you install the extension, install my script by clicking [HERE](https://github.com/KebabLord/js-hacks/raw/refs/heads/main/steal-brainrot/brainrot.user.js).
 That's all, read the below info to learn how to use it.
 
 # How to use
+> Capslock needs to be on for the keys to work.
+
+### Effect Keys:
+**V**: Opens player item stealer window. So that you can steal anyone's item in the same server.
+**Z**: Spam pumpkin weapon
+**X**: Spam freeze weapon
+**C**: Spam speed-up effect
+**B**: Spam swarm weapon
 
 ### Toggle Keys:
 **9**: Sends all player to space when you hit them
 **8**: Increases hitting range to 9999 so you can hit from afar
 **7**: When you hit a player, they can't get up for 10 second
 **6**: Ultra fast when running
-
-> Capslock needs to be on for the below keys to work.
-
-### Effect Keys:
-**Z**: Spam pumpkin weapon
-**X**: Spam freeze weapon
-**C**: Spam speed-up effect
-**B**: Spam swarm weapon
-
-### Special:
-**V**: Opens player item stealer window
-**N**: Send custom websocket packets (for development)
 

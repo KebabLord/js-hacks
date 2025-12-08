@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Fun Killer for Steal Brainrot Online
-// @version      5.6
+// @version      5.7
 // @namespace    Steal Brainrot Online
 // @description  Intercept WebSocket send/recv, apply toggles, track players, and select hex items
 // @match        https://crazygames.cdn.msnfun.com/*
@@ -1181,7 +1181,6 @@
         }
 
         var key = e.key || '';
-        var lower = key.toLowerCase();
 
         // Ignore shortcuts while typing in inputs/textareas/contentEditable
         var t = e.target;
@@ -1196,7 +1195,7 @@
         }
 
         // V -> player list or slot picker depending on currentTargetPlayer
-        if (lower === 'V') {
+        if (key === 'V') {
             if (currentTargetPlayer) {
                 openSlotPopupForPlayer(currentTargetPlayer);
             } else {

@@ -1,5 +1,7 @@
-
 # Steal Brainrot Online Hack & Cheat Script
+
+[![thumbnail](https://files.catbox.moe/shmzwd.png)](https://files.catbox.moe/6xbcp7.mp4)
+
 This project is a user script for hacking the roblox's "steal brainrot" rip-off flash game "steal brainrot online". Before it was removed from crazygames for being a "rip off", a lot of grown adults were playing this game. Now it's only available at [msn](https://www.msn.com/en-us/play/games/Steal-Brainrot-Online/cg-9pltx207s22g), [yandex](https://yandex.com/games/app/447574) and [playhop](https://playhop.com/app/447574).
 
 The server almost fully trusts the client so you can send custom websocket messages to manipulate anything. This is a fun quick project i made in few hours for le epic trolling. I no longer play it tho

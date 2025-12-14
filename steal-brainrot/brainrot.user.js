@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Fun Killer for Steal Brainrot Online
-// @version      5.7
+// @version      7
 // @namespace    Steal Brainrot Online
 // @description  Intercept WebSocket send/recv, apply toggles, track players, and select hex items
 // @match        https://crazygames.cdn.msnfun.com/*
@@ -25,6 +25,12 @@
     if (!OriginalWebSocket) {
         return;
     }
+
+    // Disable vines hotkey on specific URLs
+    var DISABLE_VINES_HOTKEY = (typeof window !== 'undefined' &&
+        window.location &&
+        typeof window.location.href === 'string' &&
+        window.location.href.indexOf('msnfun') !== -1);
 
     // =========================
     // Pointer lock helper
@@ -196,7 +202,7 @@
     var fullForceEnabled   = false; // key 9
     var fullRangeEnabled   = false; // key 7
     var sleepyEnabled      = false; // key 8
-    var weirdSpeedEnabled  = true; // key 6
+    var weirdSpeedEnabled  = true;  // key 6
     var customEnabled      = false; // for development
 
     window.TEST1337_FULLFORCE   = fullForceEnabled;
@@ -213,56 +219,185 @@
     });
 
     // =========================
-    // Known players list
+    // Known players lists
+    // - display list: limited, cleared on "connect to layer"
+    // - master list: unlimited, never cleared, used for dedupe/lookup
     // =========================
-    var KNOWN_PLAYERS_MAX = 30;
-    var knownPlayers = [];
+    var DISPLAY_PLAYERS_MAX = 50; // visual list max
+    var knownPlayers = [];        // visual list (cleared regularly)
     window.known_players = knownPlayers;
     window.TEST1337_PLAYERS = knownPlayers;
+
+    // master store (unlimited)
+    var allPlayersByUuid = Object.create(null); // uuid -> { username, uuid, firstSeen, lastSeen, source }
+    var allPlayersList = [];                    // insertion order (optional)
+    window.all_known_players = allPlayersList;
+    window.TEST1337_ALL_PLAYERS = allPlayersList;
 
     var currentTargetPlayer = null; // { username, uuid }
     var currentFloor = 0;           // 0,1,2
     var MAX_FLOOR = 2;
 
-    function addKnownPlayer(username, uuid) {
-        if (!username || !uuid) return;
+    function isUnknownName(name) {
+        return typeof name === 'string' && name.indexOf('Unknown #') === 0;
+    }
 
-        // dedupe by uuid
+    function rememberPlayer(username, uuid, source) {
+        if (!uuid) return null;
+        var now = Date.now();
+
+        var entry = allPlayersByUuid[uuid];
+        if (!entry) {
+            entry = {
+                username: username || '',
+                uuid: uuid,
+                firstSeen: now,
+                lastSeen: now,
+                source: source || ''
+            };
+            allPlayersByUuid[uuid] = entry;
+            allPlayersList.push(entry);
+            return entry;
+        }
+
+        entry.lastSeen = now;
+
+        // "best name wins": if we only had Unknown/empty before, upgrade to a real username
+        if (username) {
+            var cur = entry.username || '';
+            if (!cur || isUnknownName(cur)) {
+                entry.username = username;
+            } else if (!isUnknownName(username) && username !== cur) {
+                entry.username = username;
+            }
+        }
+
+        if (source) {
+            entry.source = source;
+        }
+
+        return entry;
+    }
+
+    function clearDisplayPlayers() {
+        knownPlayers.length = 0;
+        currentTargetPlayer = null;
+        currentFloor = 0;
+    }
+    window.clearKnownPlayers = clearDisplayPlayers; // backward-compatible
+    window.clearDisplayPlayers = clearDisplayPlayers;
+
+    function addOrRefreshDisplayPlayer(usernameCandidate, uuid, source) {
+        if (!uuid) return;
+
+        var master = rememberPlayer(usernameCandidate, uuid, source);
+        var displayName = (master && master.username) ? master.username : (usernameCandidate || '');
+
+        // dedupe in display list by uuid; if exists, update name and move to top
         var i;
         for (i = 0; i < knownPlayers.length; i++) {
             if (knownPlayers[i].uuid === uuid) {
+                knownPlayers[i].username = displayName || knownPlayers[i].username;
+                knownPlayers[i].ts = Date.now();
+
+                if (i !== 0) {
+                    var item = knownPlayers.splice(i, 1)[0];
+                    knownPlayers.unshift(item);
+                }
                 return;
             }
         }
 
-        // newest on top
         knownPlayers.unshift({
-            username: username,
+            username: displayName,
             uuid: uuid,
             ts: Date.now()
         });
 
-        if (knownPlayers.length > KNOWN_PLAYERS_MAX) {
+        if (knownPlayers.length > DISPLAY_PLAYERS_MAX) {
             knownPlayers.pop();
         }
     }
 
     // =========================
+    // console.log wrapper:
+    // - if text contains "connect to layer" -> clear display list only
+    // - parse "Player added <uuid>" -> log "1337 Player added: Unknown #<first8>"
+    // =========================
+    (function() {
+        var originalConsoleLog = console.log.bind(console);
+
+        function safeToString(v) {
+            try {
+                if (typeof v === 'string') return v;
+                if (v === null || v === undefined) return '';
+                return String(v);
+            } catch (e) {
+                return '';
+            }
+        }
+
+        var PLAYER_ADDED_RE = /(?:^|\s)Player added\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\s|$)/;
+
+        console.log = function() {
+            var args = arguments;
+
+            var combined = '';
+            var i;
+            for (i = 0; i < args.length; i++) {
+                if (i) combined += ' ';
+                combined += safeToString(args[i]);
+            }
+
+            // Clear visual players if "connect to layer" appears anywhere in the logged text
+            try {
+                if (combined && combined.toLowerCase().indexOf('connect to layer') !== -1) {
+                    clearDisplayPlayers();
+                }
+            } catch (e) {}
+
+            // Detect "Player added <uuid>"
+            try {
+                var m = combined.match(PLAYER_ADDED_RE);
+                if (m && m[1]) {
+                    var uuid = m[1];
+                    var first8 = uuid.split('-')[0] || uuid.substring(0, 8);
+                    var unknownName = 'Unknown #' + first8;
+
+                    originalConsoleLog('1337 Player added: ' + unknownName);
+
+                    // store in master + show in display (display may upgrade name later if real username arrives)
+                    addOrRefreshDisplayPlayer(unknownName, uuid, 'console');
+                }
+            } catch (e) {}
+
+            return originalConsoleLog.apply(console, args);
+        };
+    })();
+
+    // =========================
     // Packets (hex -> Uint8Array)
     // =========================
-    var FREEZE_PACKET_HEX =
+    var OLD_FREEZE_PACKET_HEX =
         '92d2000000389501c0d9757b0a2020226566666563745f6964223a2022667265657a65222c0a202022636173745f656666656374223a20224963654e6f7661222c0a20202272616e6765223a202239393939222c0a202022667265657a65223a20223939393939222c0a2020226475726174696f6e223a202234303030220a7d93cac1dccd72ca3f05729cca423e176d93ca80000000ca43af31e0ca00000000';
+
+    var FREEZE_PACKET_HEX =
+        '92d2000000389501c0d9757b0a2020226566666563745f6964223a2022667265657a65222c0a202022636173745f656666656374223a20224963654e6f7661222c0a20202272616e6765223a202235303030222c0a202022667265657a65223a22353030303030222c0a2020226475726174696f6e223a202235303030220a7d93cac1dccd72ca3f05729cca423e176d93ca80000000ca43af31e0ca00000000';
 
     var C_PACKET_HEX =
         '92d2000000389503c0d9487b0a2020226566666563745f6964223a202273706565647570222c0a20202273706565647570223a20223430303030222c0a2020226475726174696f6e223a202239393939220a7d93cac13f7922ca3cb02090ca42b7fbbb93ca80000000ca431577f4ca80000000';
 
     // Z (vines)
     var VINES_PACKET_HEX =
-        '92d2000000389501c0d96b7b0a2020226566666563745f6964223a202270756d706b696e222c0a2020226475726174696f6e223a202239393939222c0a20202272616e6765223a202239393939222c0a202022636173745f6566666563745f6e223a202250756d706b696e46585f737061776e220a7d93cac166dd1eca3cb02120ca4225be3e93ca80000000ca43a55ae1ca00000000';
+        '92d2000000389501c0d96b7b0a2020226566666563745f6964223a202270756d706b696e222c0a2020226475726174696f6e223a223339393939222c0a20202272616e6765223a202239393939222c0a202022636173745f6566666563745f6e223a202250756d706b696e46585f737061776e220a7d93cac166dd1eca3cb02120ca4225be3e93ca80000000ca43a55ae1ca00000000';
 
     // B (swarm)
     var SWARM_PACKET_HEX =
         '92d2000000389501c0d9667b0a2020226566666563745f6964223a2022737761726d222c0a202022636173745f6566666563745f6e223a2022537761726d46785f43617374222c0a2020226475726174696f6e223a202239393939222c0a20202272616e6765223a202239393939220a7d93ca4182341aca3ca18900ca42a7be3b93ca80000000ca4385f2eaca00000000';
+
+    // J (blackhole)
+    var BLACKHOLE_PACKET_HEX =
+        '92d2000000389504c0d9577b0a202022707265666162223a2022426c61636b486f6c65222c0a20202273697a65223a202239393939222c0a202022666f7263657a6f6e65223a202239222c0a2020226475726174696f6e223a202231303030220a7d93cabfbd78c6ca3cb02000ca42879f8093ca80000000ca425dfd63ca80000000';
 
     function hexToUint8Array(hex) {
         if (typeof hex !== 'string') {
@@ -282,10 +417,11 @@
         return arr;
     }
 
-    var FREEZE_PACKET = hexToUint8Array(FREEZE_PACKET_HEX);
-    var C_PACKET      = hexToUint8Array(C_PACKET_HEX);
-    var VINES_PACKET  = hexToUint8Array(VINES_PACKET_HEX);
-    var SWARM_PACKET  = hexToUint8Array(SWARM_PACKET_HEX);
+    var FREEZE_PACKET    = hexToUint8Array(FREEZE_PACKET_HEX);
+    var C_PACKET         = hexToUint8Array(C_PACKET_HEX);
+    var VINES_PACKET     = hexToUint8Array(VINES_PACKET_HEX);
+    var SWARM_PACKET     = hexToUint8Array(SWARM_PACKET_HEX);
+    var BLACKHOLE_PACKET = hexToUint8Array(BLACKHOLE_PACKET_HEX);
 
     function getLastOpenWebSocket() {
         var i;
@@ -327,6 +463,14 @@
         if (!ws) return;
         try {
             ws.send(SWARM_PACKET);
+        } catch (e) {}
+    }
+
+    function sendBlackholePacket() {
+        var ws = getLastOpenWebSocket();
+        if (!ws) return;
+        try {
+            ws.send(BLACKHOLE_PACKET);
         } catch (e) {}
     }
 
@@ -388,14 +532,29 @@
         return hex;
     }
 
-    // Incoming regex: uuid, slot-byte, username (UTF-8 printable)
-    var INCOMING_RE = new RegExp(
+    // =========================
+    // Incoming regex (updated):
+    // - no slotHex group anymore
+    // - usernameHex is "any bytes" between:
+    //   pre:  92d20000000191 + any byte
+    //   post: 92d20000000191c092d20000000591
+    // =========================
+    var INCOMING_RE_OLD = new RegExp(
+        // uuid ascii-hex (0-9, a-f) + hyphens
         '((?:3[0-9]|6[1-6]){8}2d(?:3[0-9]|6[1-6]){4}2d(?:3[0-9]|6[1-6]){4}2d(?:3[0-9]|6[1-6]){4}2d(?:3[0-9]|6[1-6]){12})' +
-        '92d20000000091' +
-        '([0-9a-f]{2})' +
-        '(?=(?:(?!(?:3[0-9]|6[1-6]){8}2d).)*92d20000000191[0-9a-f]{2}' +
-        '((?:2[0-9a-f]|3[0-9a-f]|4[0-9a-f]|5[0-9a-f]|6[0-9a-f]|7[0-9e]|c2[89ab][0-9a-f]|c[3-9a-f][8-9a-b][0-9a-f]|d[0-9a-f][8-9a-b][0-9a-f]|e[0-9a-f](?:8[0-9a-b]|9[0-9a-f]|a[0-9a-f]|b[0-9a-f])[0-9a-f]{2}|f0(?:8[0-9a-b]|9[0-9a-f]|a[0-9a-f]|b[0-9a-f])[0-9a-f]{3}){8,400})' +
-        '92d20000000191)',
+        // pre marker
+        '92d20000000191' +
+        // + any byte (ignored)
+        '[0-9a-f]{2}' +
+        // username bytes (hex), lazy until post marker (allow short + UTF-8 incl. Greek)
+        '([0-9a-f]{2,1200}?)' +
+        // post marker (extended)
+        '92d20000000191c092d20000000591',
+        'g'
+    );
+
+    var INCOMING_RE = new RegExp(
+        '((?:3[0-9]|6[1-6]){8}2d(?:3[0-9]|6[1-6]){4}2d(?:3[0-9]|6[1-6]){4}2d(?:3[0-9]|6[1-6]){4}2d(?:3[0-9]|6[1-6]){12})92d20000000091(?:[0-9a-f]{2})(?=(?:(?!(?:3[0-9]|6[1-6]){8}2d).)*92d20000000191..(.{1,65})92d20000000191c092d20000000591)',
         'g'
     );
 
@@ -404,21 +563,14 @@
         var match;
         while ((match = INCOMING_RE.exec(hex)) !== null) {
             var uuidHex = match[1];
-            var slotHex = match[2];
-            var usernameHex = match[3];
+            var usernameHex = match[2];
 
             var uuid = hexToAscii(uuidHex);
-            var slotNum = parseInt(slotHex, 16);
-            if (isNaN(slotNum)) {
-                continue;
-            }
-            var slotStr = slotNum < 10 ? '0' + slotNum : String(slotNum);
-
             var username = hexToUtf8(usernameHex);
 
-            console.log('NEW1337: ' + username + ' in ' + slotStr + ' slot with ' + uuid);
+            console.log('NEW1337: ' + username + ' with ' + uuid);
 
-            addKnownPlayer(username, uuid);
+            addOrRefreshDisplayPlayer(username, uuid, 'ws');
         }
     }
 
@@ -1280,8 +1432,11 @@
             return;
         }
 
-        // Big Z = vines
+        // Big Z = vines (disabled if "msnfun" is in URL)
         if (key === 'Z') {
+            if (DISABLE_VINES_HOTKEY) {
+                return;
+            }
             sendVinesPacket();
             return;
         }
@@ -1289,6 +1444,12 @@
         // Big B = swarm
         if (key === 'B') {
             sendSwarmPacket();
+            return;
+        }
+
+        // Big J = blackhole
+        if (key === 'J') {
+            sendBlackholePacket();
             return;
         }
 
@@ -1302,16 +1463,21 @@
     window.addEventListener('keydown', handleKeyToggle, true);
 
     // =========================
-    // Byte replacement helper
+    // Byte replacement helper (supports wildcards in pattern via -1)
     // =========================
     function replaceByteSequence(uint8, pattern, replacement) {
         var changed = false;
         var i, j, k;
+
+        if (!uint8 || !pattern || !replacement) return false;
+        if (pattern.length !== replacement.length) return false;
+        if (pattern.length === 0) return false;
+
         outer: for (i = 0; i <= uint8.length - pattern.length; i++) {
             for (j = 0; j < pattern.length; j++) {
-                if (uint8[i + j] !== pattern[j]) {
-                    continue outer;
-                }
+                var p = pattern[j];
+                if (p === -1) continue; // wildcard: match any byte
+                if (uint8[i + j] !== p) continue outer;
             }
             for (k = 0; k < pattern.length; k++) {
                 uint8[i + k] = replacement[k];
@@ -1321,23 +1487,25 @@
         return changed;
     }
 
-    // Patterns (ASCII) including quotes, colon, space, and value
-    var FORCE_PATTERN = [34,102,111,114,99,101,34,58,32,34,49,50,48,48,48,34];
+    // "force": "?????"  (5 bytes wildcard) -> "99999"
+    var FORCE_PATTERN = [34,102,111,114,99,101,34,58,32,34,-1,-1,-1,-1,-1,34];
     var FORCE_REPLACEMENT = [34,102,111,114,99,101,34,58,32,34,57,57,57,57,57,34];
 
-    var RANGE_PATTERN = [34,114,97,110,103,101,34,58,32,34,51,56,48,48,34];
+    // alternative: "force": 20000 (numeric, no quotes) -> "force": 99999 (numeric)
+    var FORCE_NUM20000_PATTERN = [34,102,111,114,99,101,34,58,32,50,48,48,48,48];
+    var FORCE_NUM20000_REPLACEMENT = [34,102,111,114,99,101,34,58,32,57,57,57,57,57];
+
+    var RANGE_PATTERN = [34,114,97,110,103,101,34,58,32,34,-1,-1,-1,-1,34];
     var RANGE_REPLACEMENT = [34,114,97,110,103,101,34,58,32,34,57,57,57,57,34];
 
-    var STUN_PATTERN = [34,115,116,117,110,34,58,32,34,49,51,48,48,34];
+    var STUN_PATTERN = [34,115,116,117,110,34,58,32,34,-1,-1,-1,-1,34];
     var STUN_REPLACEMENT = [34,115,116,117,110,34,58,32,34,57,57,57,57,34];
 
     var SPEED_PATTERN = [34,115,112,101,101,100,117,112,34,58,32,34,52,48,48,48,48,34];
-    // user-modified replacement (no space after colon)
     var SPEED_REPLACEMENT = [34,115,112,101,101,100,117,112,34,58,34,54,51,51,51,51,51,34];
 
     var CUSTOM_PATTERN = [];
     var CUSTOM_REPLACE = [];
-
 
     // =========================
     // WebSocket wrapper
@@ -1384,12 +1552,18 @@
             var touchedSpeedAB = false;
 
             if (customEnabled && replaceByteSequence(view, CUSTOM_PATTERN, CUSTOM_REPLACE)) {
-              touchedCustom = true;
+                touchedCustom = true;
             }
 
-            if (fullForceEnabled && replaceByteSequence(view, FORCE_PATTERN, FORCE_REPLACEMENT)) {
-                touchedForceAB = true;
+            if (fullForceEnabled) {
+                if (replaceByteSequence(view, FORCE_PATTERN, FORCE_REPLACEMENT)) {
+                    touchedForceAB = true;
+                }
+                if (replaceByteSequence(view, FORCE_NUM20000_PATTERN, FORCE_NUM20000_REPLACEMENT)) {
+                    touchedForceAB = true;
+                }
             }
+
             if (fullRangeEnabled && replaceByteSequence(view, RANGE_PATTERN, RANGE_REPLACEMENT)) {
                 touchedRangeAB = true;
             }
@@ -1406,9 +1580,8 @@
                 if (touchedRangeAB)  console.log('TEST1337: Sent injected fullrange (binary ArrayBuffer)');
                 if (touchedStunAB)   console.log('TEST1337: Sent injected sleepy (binary ArrayBuffer)');
                 if (touchedSpeedAB)  console.log('TEST1337: Sent injected weird speed (binary ArrayBuffer)');
-                if (touchedCustom)   console.log('TEST1337: CUSTOM MESSAGE (binary ArrayBuffer)')
+                if (touchedCustom)   console.log('TEST1337: CUSTOM MESSAGE (binary ArrayBuffer)');
             }
-
         } else if (ArrayBuffer.isView(outData)) {
             var srcView = new Uint8Array(outData.buffer, outData.byteOffset, outData.byteLength);
             var newBuffer2 = new ArrayBuffer(outData.byteLength);
@@ -1420,9 +1593,15 @@
             var touchedStunTA  = false;
             var touchedSpeedTA = false;
 
-            if (fullForceEnabled && replaceByteSequence(view2, FORCE_PATTERN, FORCE_REPLACEMENT)) {
-                touchedForceTA = true;
+            if (fullForceEnabled) {
+                if (replaceByteSequence(view2, FORCE_PATTERN, FORCE_REPLACEMENT)) {
+                    touchedForceTA = true;
+                }
+                if (replaceByteSequence(view2, FORCE_NUM20000_PATTERN, FORCE_NUM20000_REPLACEMENT)) {
+                    touchedForceTA = true;
+                }
             }
+
             if (fullRangeEnabled && replaceByteSequence(view2, RANGE_PATTERN, RANGE_REPLACEMENT)) {
                 touchedRangeTA = true;
             }
@@ -1433,7 +1612,7 @@
                 touchedSpeedTA = true;
             }
 
-            if ( touchedForceTA || touchedRangeTA || touchedStunTA || touchedSpeedTA) {
+            if (touchedForceTA || touchedRangeTA || touchedStunTA || touchedSpeedTA) {
                 outData = view2;
                 if (touchedForceTA)  console.log('TEST1337: Sent injected fullforce (binary TypedArray)');
                 if (touchedRangeTA)  console.log('TEST1337: Sent injected fullrange (binary TypedArray)');
@@ -1441,7 +1620,7 @@
                 if (touchedSpeedTA)  console.log('TEST1337: Sent injected weird speed (binary TypedArray)');
             }
         } else {
-          console.log("TEST1337: ELSE CASE!!");
+            console.log('TEST1337: ELSE CASE!!');
         }
 
         return originalSend.call(this, outData);
@@ -1449,4 +1628,3 @@
 
     window.WebSocket = WrappedWebSocket;
 })();
-

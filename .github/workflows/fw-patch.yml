@@ -1,0 +1,114 @@
+name: Frontwars JS patcher
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Exit early if previous run failed
+        id: guard
+        run: |
+          if [ -f .github/frontwars_failed.flag ]; then
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+            echo "Previous run marked as failed (.github/frontwars_failed.flag exists). Exiting early."
+          else
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.guard.outputs.blocked != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fetch site and detect index js
+        if: steps.guard.outputs.blocked != 'true'
+        id: detect
+        run: |
+          python - << 'EOF'
+          import os
+          import re
+          from urllib.request import urlopen
+          from pathlib import Path
+
+          URL = "https://frontwars.io"
+          STATE_FILE = Path(".github/last_index_js.txt")
+
+          previous = STATE_FILE.read_text(encoding="utf-8").strip() if STATE_FILE.exists() else ""
+
+          resp = urlopen(URL, timeout=20)
+          status_code = resp.status
+          assert status_code == 200, "Couldn't reach frontwars."
+
+          res = resp.read().decode("utf-8")
+
+          matches = re.findall(r"/assets/index-[A-Za-z0-9]+\.js", res)
+          assert matches, "Couldn't find index-XXXX.js at homepage."
+
+          filename = matches[0].split("/")[-1]
+          changed = filename != previous
+
+          # Only write state optimistically if changed; we will revert on patcher failure.
+          if changed:
+            STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            STATE_FILE.write_text(filename, encoding="utf-8")
+
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a", encoding="utf-8") as f:
+              f.write(f"changed={'true' if changed else 'false'}\n")
+              f.write(f"filename={filename}\n")
+              f.write(f"previous={previous}\n")
+
+          print("Previous:", previous)
+          print("Current :", filename)
+          print("Changed :", changed)
+          EOF
+
+      - name: Run patcher
+        if: steps.detect.outputs.changed == 'true' && steps.guard.outputs.blocked != 'true'
+        run: |
+          cd frontwars.io
+          python patcher.py
+
+      - name: On patcher failure revert state + mark failed
+        if: failure() && steps.detect.outputs.changed == 'true' && steps.guard.outputs.blocked != 'true'
+        run: |
+          echo "${{ steps.detect.outputs.previous }}" > .github/last_index_js.txt
+          echo "failed" > .github/frontwars_failed.flag
+
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .github/last_index_js.txt .github/frontwars_failed.flag
+          git diff --cached --quiet || git commit -m "Mark Frontwars patcher failed (${filename})"
+          git push
+        env:
+          filename: ${{ steps.detect.outputs.filename }}
+
+      - name: Commit changes
+        if: success() && steps.detect.outputs.changed == 'true' && steps.guard.outputs.blocked != 'true'
+        run: |
+          rm -f .github/frontwars_failed.flag
+      
+          git config user.name "github-actions"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      
+          git add .github/last_index_js.txt frontwars.io/patched-index.js
+          if [ -f .github/frontwars_failed.flag ]; then
+            git add .github/frontwars_failed.flag
+          fi
+      
+          git diff --cached --quiet || git commit -m "Patched new ${filename} file"
+          git push
+        env:
+          filename: ${{ steps.detect.outputs.filename }}

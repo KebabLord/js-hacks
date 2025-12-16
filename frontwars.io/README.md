@@ -8,6 +8,8 @@ This project overrides frontwars' index.js with some modifications to achieve ma
 
 Do you have any feature requests or complain? You can tell me [here](https://github.com/KebabLord/js-hacks/issues).
 
+https://github.com/user-attachments/assets/060cbf97-b4b6-497a-ad1d-9868b91d733e
+
 # How to install
 First, you have to install **Resource Override** browser extension
 - If you are using google chrome [click here](https://chromewebstore.google.com/detail/resource-override/ohpilhbphbbkfkmjgnjjmnbeeiipkkko).
@@ -20,8 +22,10 @@ After you install the extension:
  1. Click extension icon
  2. Click "Add Rule"
  3. Select URL -> URL
- 4. From: `https://frontwars.io/assets/index-*.js`
- 5. To: `https://kebablord.github.io/js-hacks/frontwars.io/patched-index.js` 
+ 4. Update From: `https://frontwars.io/assets/index-*.js`
+ 5. Update To: `https://kebablord.github.io/js-hacks/frontwars.io/patched-index.js` 
+
+<img width="829" height="263" alt="2025-12-16_03-54" src="https://github.com/user-attachments/assets/33933893-3460-4e53-adeb-fd6b0109de92" />
 
 Refresh the frontwars page with Ctrl+F5 and you should see the "Macro activated" message. That's all.
 

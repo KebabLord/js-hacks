@@ -211,7 +211,7 @@ function showToast(message) {
 
     // ---------- spam loop ----------
     let last = 0;
-    const interval = 100; // ms
+    const interval = 10; // ms
 
     let lastKeepghost;
     let lastSpam;

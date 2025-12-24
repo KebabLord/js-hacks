@@ -4,7 +4,7 @@
 // @namespace    Steal Brainrot Online
 // @description  Intercept WebSocket send/recv, apply toggles, track players, and select hex items
 // @match        https://crazygames.cdn.msnfun.com/*
-// @match        https://app-447574.games.*.yandex.net/447574*
+// @match        https://app-447574.*.yandex.net/447574*
 // @run-at       document-start
 // @grant        none
 // @updateURL    https://github.com/KebabLord/js-hacks/raw/refs/heads/main/steal-brainrot/brainrot.user.js

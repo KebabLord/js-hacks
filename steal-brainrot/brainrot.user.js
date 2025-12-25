@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Fun Killer for Steal Brainrot Online
-// @version      7
+// @version      7.2
 // @namespace    Steal Brainrot Online
 // @description  Intercept WebSocket send/recv, apply toggles, track players, and select hex items
 // @match        https://crazygames.cdn.msnfun.com/*
